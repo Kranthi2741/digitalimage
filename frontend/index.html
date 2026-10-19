@@ -901,6 +901,8 @@ svg#lines{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2}
 
 <script>
 // Auth state
+// Temporary deployment mode: authentication is disabled until MySQL is added.
+const NO_AUTH_MODE = true;
 let _authToken = sessionStorage.getItem("mkt_token") || "";
 let _authRole  = sessionStorage.getItem("mkt_role")  || "";
 let _authEmail = sessionStorage.getItem("mkt_email") || "";
@@ -975,11 +977,18 @@ document.getElementById("setupForm").addEventListener("submit", async event => {
   } catch { msg.textContent = "Cannot reach server."; }
 });
 
-if (_authToken) {
+if (!NO_AUTH_MODE && _authToken) {
   fetch("/api/auth/me", { headers: authHeaders() })
     .then(r => r.ok ? r.json() : null)
     .then(data => { if (data) enterWorkspace(data.email, data.role); })
     .catch(() => {});
+}
+
+if (NO_AUTH_MODE) {
+  _authToken = "demo-local-session";
+  _authRole = "admin";
+  _authEmail = "demo@local";
+  enterWorkspace(_authEmail, _authRole);
 }
 
 const VIEW_NAMES = { dashboard:"Dashboard", research:"Research", campaigns:"Campaigns", agents:"Agents", library:"Content Library", calendar:"Calendar", analytics:"Analytics", integrations:"Integrations", settings:"Settings" };
