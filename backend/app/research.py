@@ -5,7 +5,7 @@ import os
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
-from app.llm import _ollama_generate
+from app.llm import _text_generate
 
 ALLOWED_DOMAINS = ("cdc.gov", "who.int", "nih.gov", "nhs.uk", "gov.uk", "mayoclinic.org")
 
@@ -115,9 +115,9 @@ Return ONLY valid JSON in this shape. Do not put URLs, citations, source names, 
 Keep the response compact: summary under 45 words, no more than 4 research_sections, no more than 5 key_facts, and no more than 5 slides. Keep each slide's short_copy under 25 words and each bullet_point under 9 words. Use 2-4 short bullet_points directly related to the visual, use plain language, and make all text suitable for an infographic image. Include source numbers only in source_numbers fields. Never add commentary outside the JSON.
 """
     try:
-        raw = (_ollama_generate(instruction + "\nDo not omit any required key. Populate research_sections, key_facts, slide_outline, cautions, summary, disclaimer, and medical_review_required with useful content.") or "").strip()
+        raw = (_text_generate(instruction + "\nDo not omit any required key. Populate research_sections, key_facts, slide_outline, cautions, summary, disclaimer, and medical_review_required with useful content.") or "").strip()
         if not raw:
-            raise RuntimeError("Ollama returned no content")
+            raise RuntimeError("Qwen3-8B returned no content")
         if raw.startswith("```"):
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.DOTALL).strip()
         start, end = raw.find("{"), raw.rfind("}")
@@ -126,11 +126,11 @@ Keep the response compact: summary under 45 words, no more than 4 research_secti
         try:
             result = json.loads(raw)
         except json.JSONDecodeError as error:
-            raise RuntimeError(f"Ollama returned non-JSON content: {raw[:300]}") from error
+            raise RuntimeError(f"Qwen3-8B returned non-JSON content: {raw[:300]}") from error
     except Exception as error:
-        raise RuntimeError(f"Ollama research failed: {error}") from error
+        raise RuntimeError(f"Qwen3-8B research failed: {error}") from error
     if not isinstance(result, dict):
-        raise RuntimeError("Ollama returned an invalid research response.")
+        raise RuntimeError("Qwen3-8B returned an invalid research response.")
     required = ("summary", "research_sections", "key_facts", "slide_outline", "cautions", "disclaimer")
     missing = [key for key in required if key not in result or result.get(key) in (None, "")]
     if missing:
@@ -142,7 +142,7 @@ key_facts (array of objects with claim and confidence), slide_outline (array of 
 cautions (array of strings), disclaimer (string), medical_review_required (boolean).
 Provide useful concise educational content. Do not omit keys.'''
         try:
-            compact_raw = (_ollama_generate(compact) or "").strip()
+            compact_raw = (_text_generate(compact) or "").strip()
             if compact_raw.startswith("```"):
                 compact_raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", compact_raw, flags=re.IGNORECASE | re.DOTALL).strip()
             start, end = compact_raw.find("{"), compact_raw.rfind("}")
@@ -153,7 +153,7 @@ Provide useful concise educational content. Do not omit keys.'''
             pass
         missing = [key for key in required if key not in result or result.get(key) in (None, "")]
         if missing:
-            raise RuntimeError(f"Ollama returned an incomplete research response; missing: {', '.join(missing)}")
+            raise RuntimeError(f"Qwen3-8B returned an incomplete research response; missing: {', '.join(missing)}")
     result["sources"] = []
     result["research_mode"] = f"Local Hugging Face {os.environ.get('HF_TEXT_MODEL', 'Qwen/Qwen3-8B')}; human review required"
     result["user_prompt"] = prompt
