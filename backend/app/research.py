@@ -5,7 +5,7 @@ import os
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
-from app.llm import _text_generate, _repair_json
+from app.llm import _text_generate, _repair_json, ask_json
 
 ALLOWED_DOMAINS = ("cdc.gov", "who.int", "nih.gov", "nhs.uk", "gov.uk", "mayoclinic.org")
 
@@ -114,17 +114,10 @@ Return ONLY valid JSON in this shape. Do not put URLs, citations, source names, 
 "medical_review_required":true}}
 Keep the response compact: summary under 45 words, no more than 4 research_sections, no more than 5 key_facts, and no more than 5 slides. Keep each slide's short_copy under 25 words and each bullet_point under 9 words. Use 2-4 short bullet_points directly related to the visual, use plain language, and make all text suitable for an infographic image. Include source numbers only in source_numbers fields. Never add commentary outside the JSON.
 """
-    try:
-        raw = (_text_generate(instruction + "\nDo not omit any required key. Populate research_sections, key_facts, slide_outline, cautions, summary, disclaimer, and medical_review_required with useful content.") or "").strip()
-        if not raw:
-            raise RuntimeError("Qwen3-8B returned no content")
-        raw = _repair_json(raw)
-        try:
-            result = json.loads(raw)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(f"Qwen3-8B returned non-JSON content: {raw[:300]}") from error
-    except Exception as error:
-        raise RuntimeError(f"Qwen3-8B research failed: {error}") from error
+    result = ask_json(
+        instruction,
+        "Research topic: " + prompt + "\nDo not omit any required key. Populate research_sections, key_facts, slide_outline, cautions, summary, disclaimer, and medical_review_required.",
+    )
     if not isinstance(result, dict):
         raise RuntimeError("Qwen3-8B returned an invalid research response.")
     required = ("summary", "research_sections", "key_facts", "slide_outline", "cautions", "disclaimer")
@@ -137,13 +130,12 @@ Use exactly these keys: summary (string), research_sections (array of objects wi
 key_facts (array of objects with claim and confidence), slide_outline (array of objects with number, headline, short_copy, purpose),
 cautions (array of strings), disclaimer (string), medical_review_required (boolean).
 Provide useful concise educational content. Do not omit keys.'''
-        try:
-            compact_raw = (_text_generate(compact) or "").strip()
-            compact_result = json.loads(_repair_json(compact_raw))
-            if isinstance(compact_result, dict):
-                result.update(compact_result)
-        except Exception:
-            pass
+        compact_result = ask_json(
+            "Return only valid JSON for this research topic. Use exactly these keys: summary, research_sections, key_facts, slide_outline, cautions, disclaimer, medical_review_required.",
+            compact,
+        )
+        if isinstance(compact_result, dict):
+            result.update(compact_result)
         missing = [key for key in required if key not in result or result.get(key) in (None, "")]
         if missing:
             raise RuntimeError(f"Qwen3-8B returned an incomplete research response; missing: {', '.join(missing)}")
