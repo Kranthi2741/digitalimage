@@ -21,6 +21,38 @@ QUESTION_TERMS = {
 }
 
 
+def _fallback_report(prompt: str) -> dict:
+    """Return a usable, non-factual scaffold when Qwen cannot complete JSON."""
+    topic = prompt.strip() or "the requested health topic"
+    return {
+        "topic": topic,
+        "campaign_mode": "single_image",
+        "summary": f"A human-reviewed educational brief is needed for: {topic}.",
+        "art_direction": "Clear, calm, trustworthy healthcare editorial design with one focal subject.",
+        "research_sections": [{
+            "question": "What is the topic?",
+            "answer": "Confirm the definition and scope from an approved clinical or public-health source before publishing.",
+            "source_numbers": [],
+        }],
+        "key_facts": [],
+        "slide_outline": [{
+            "number": 1,
+            "purpose": "Introduce the topic safely",
+            "headline": topic[:64],
+            "short_copy": "Use verified information and consult a qualified professional.",
+            "bullet_points": [],
+            "visual_direction": "One clear, respectful healthcare scene with no unsupported claims.",
+            "source_numbers": [],
+        }],
+        "cautions": ["Human review and approved sources are required before publication."],
+        "questions_for_review": ["Which approved sources and audience-specific guidance should be used?"],
+        "disclaimer": "For education only; not a substitute for professional medical advice.",
+        "medical_review_required": True,
+        "sources": [],
+        "research_mode": "Qwen3-8B fallback scaffold; human review required",
+    }
+
+
 def _clean_sentences(text: str) -> list[str]:
     text = re.sub(r"\[[^\]]*\]|\([^)]*https?://[^)]*\)", " ", text)
     text = re.sub(r"#{1,6}\s*", "", text)
@@ -138,7 +170,9 @@ Provide useful concise educational content. Do not omit keys.'''
             result.update(compact_result)
         missing = [key for key in required if key not in result or result.get(key) in (None, "")]
         if missing:
-            raise RuntimeError(f"Qwen3-8B returned an incomplete research response; missing: {', '.join(missing)}")
+            fallback = _fallback_report(prompt)
+            fallback["research_error"] = f"Qwen3-8B returned an incomplete response; missing: {', '.join(missing)}"
+            return fallback
     result["sources"] = []
     result["research_mode"] = f"Local Hugging Face {os.environ.get('HF_TEXT_MODEL', 'Qwen/Qwen3-8B')}; human review required"
     result["user_prompt"] = prompt
