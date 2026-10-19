@@ -5,7 +5,7 @@ import os
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
-from app.llm import _text_generate
+from app.llm import _text_generate, _repair_json
 
 ALLOWED_DOMAINS = ("cdc.gov", "who.int", "nih.gov", "nhs.uk", "gov.uk", "mayoclinic.org")
 
@@ -118,11 +118,7 @@ Keep the response compact: summary under 45 words, no more than 4 research_secti
         raw = (_text_generate(instruction + "\nDo not omit any required key. Populate research_sections, key_facts, slide_outline, cautions, summary, disclaimer, and medical_review_required with useful content.") or "").strip()
         if not raw:
             raise RuntimeError("Qwen3-8B returned no content")
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.DOTALL).strip()
-        start, end = raw.find("{"), raw.rfind("}")
-        if start >= 0 and end > start:
-            raw = raw[start:end + 1]
+        raw = _repair_json(raw)
         try:
             result = json.loads(raw)
         except json.JSONDecodeError as error:
@@ -143,10 +139,7 @@ cautions (array of strings), disclaimer (string), medical_review_required (boole
 Provide useful concise educational content. Do not omit keys.'''
         try:
             compact_raw = (_text_generate(compact) or "").strip()
-            if compact_raw.startswith("```"):
-                compact_raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", compact_raw, flags=re.IGNORECASE | re.DOTALL).strip()
-            start, end = compact_raw.find("{"), compact_raw.rfind("}")
-            compact_result = json.loads(compact_raw[start:end + 1] if start >= 0 and end > start else compact_raw)
+            compact_result = json.loads(_repair_json(compact_raw))
             if isinstance(compact_result, dict):
                 result.update(compact_result)
         except Exception:
