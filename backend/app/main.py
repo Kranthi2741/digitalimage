@@ -39,11 +39,16 @@ from app.agents.publisher import _cloudinary_upload, _instagram_publish, SOCIAL_
 
 app = FastAPI()
 
-# Initialise DB tables + seed admin on startup
-try:
-    auth_module.init_db()
-except Exception as _db_err:
-    print(f"[WARN] MySQL not available: {_db_err}. Auth endpoints will return 503.")
+# Set AUTH_DISABLED=true for local/server testing without MySQL. In this mode
+# the UI receives a temporary demo identity and user/admin persistence is off.
+AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() in {"1", "true", "yes"}
+if not AUTH_DISABLED:
+    try:
+        auth_module.init_db()
+    except Exception as _db_err:
+        print(f"[WARN] MySQL not available: {_db_err}. Set AUTH_DISABLED=true for testing without DB.")
+else:
+    print("[WARN] AUTH_DISABLED=true: running without MySQL authentication.")
 DATA_DIR = Path("app_data")
 DATA_DIR.mkdir(exist_ok=True)
 SCHEDULE_PATH = DATA_DIR / "schedule.json"
@@ -725,6 +730,8 @@ def build_log_message(node_name: str, node_state: dict) -> str:
 def _require_token(request):
     """Extract and validate Bearer token from Authorization header."""
     from fastapi import Request, HTTPException
+    if AUTH_DISABLED:
+        return {"sub": 0, "email": "demo@local", "role": "admin", "must_change": False}
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing token")
@@ -741,6 +748,13 @@ from fastapi import Request, HTTPException
 
 @app.post("/api/auth/login")
 async def login(payload: dict):
+    if AUTH_DISABLED:
+        return {
+            "token": "demo-local-session",
+            "email": "demo@local",
+            "role": "admin",
+            "must_change": False,
+        }
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
     user = auth_module.get_user_by_email(email)
@@ -768,6 +782,8 @@ async def setup_password(request: Request, payload: dict):
 @app.get("/api/auth/me")
 async def me(request: Request):
     claims = _require_token(request)
+    if AUTH_DISABLED:
+        return {"id": 0, "email": claims["email"], "role": claims["role"], "must_change": False}
     user = auth_module.get_user_by_id(claims["sub"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -781,7 +797,7 @@ async def admin_list_users(request: Request):
     claims = _require_token(request)
     if claims.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
-    return {"users": auth_module.list_users()}
+    return {"users": [] if AUTH_DISABLED else auth_module.list_users()}
 
 
 @app.post("/api/admin/users")
@@ -789,6 +805,8 @@ async def admin_create_user(request: Request, payload: dict):
     claims = _require_token(request)
     if claims.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
+    if AUTH_DISABLED:
+        raise HTTPException(status_code=503, detail="User management is disabled while AUTH_DISABLED=true")
     email = (payload.get("email") or "").strip().lower()
     temp_password = payload.get("temp_password") or ""
     if not email or not temp_password:
@@ -804,6 +822,8 @@ async def admin_delete_user(request: Request, user_id: int):
     claims = _require_token(request)
     if claims.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
+    if AUTH_DISABLED:
+        raise HTTPException(status_code=503, detail="User management is disabled while AUTH_DISABLED=true")
     auth_module.delete_user(user_id)
     return {"ok": True}
 
@@ -829,7 +849,7 @@ async def admin_get_logs(request: Request):
     claims = _require_token(request)
     if claims.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
-    return {"logs": auth_module.list_campaign_logs()}
+    return {"logs": [] if AUTH_DISABLED else auth_module.list_campaign_logs()}
 
 
 @app.websocket("/ws/campaign")
@@ -978,3 +998,7 @@ async def campaign_socket(websocket: WebSocket):
         if run_id:
             active_campaigns.pop(run_id, None)
         await websocket.close()
+    if AUTH_DISABLED:
+        raise HTTPException(status_code=503, detail="User management is disabled while AUTH_DISABLED=true")
+    if AUTH_DISABLED:
+        raise HTTPException(status_code=503, detail="User management is disabled while AUTH_DISABLED=true")
