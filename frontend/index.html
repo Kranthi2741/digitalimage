@@ -904,6 +904,10 @@ svg#lines{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2}
 // API URLs would otherwise escape the proxy and return 404. Keep local and
 // normal deployments working by prefixing only API/WebSocket paths.
 const APP_BASE_PATH = window.location.pathname.replace(/\/+$/, "");
+function appResourceUrl(value) {
+  if (!value || typeof value !== "string") return value;
+  return value.startsWith("/") ? APP_BASE_PATH + value : value;
+}
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
   if (typeof input === "string" && input.startsWith("/api/")) {
@@ -1737,7 +1741,7 @@ function openPanel(key) {
       div.className = "panel-entry " + entry.kind;
       let html = `<div class="panel-time">${entry.time}</div>${entry.message}`;
       if (entry.image_url) {
-        html += `<img class="panel-thumb" src="${entry.image_url}" />`;
+        html += `<img class="panel-thumb" src="${appResourceUrl(entry.image_url)}" />`;
       }
       div.innerHTML = html;
       entriesDiv.appendChild(div);
@@ -1902,7 +1906,7 @@ function runCampaignWithImages(scheduledCampaigns = null, imageIds = [], promptO
       message: msg.log || "Working...",
       kind: isFail ? "fail" : "ok",
       time: timestamp(),
-      image_url: (msg.state && msg.state.image_url) ? (msg.state.image_url + "?t=" + Date.now()) : null,
+      image_url: (msg.state && msg.state.image_url) ? (appResourceUrl(msg.state.image_url) + "?t=" + Date.now()) : null,
     });
     pushActivity(`${NAMES[key]}: ${msg.log || (isFail ? "Rejected, retrying" : "Done")}`);
 
@@ -1945,7 +1949,7 @@ function runCampaignWithImages(scheduledCampaigns = null, imageIds = [], promptO
     }
 
     if (msg.state && msg.state.image_url) {
-      document.getElementById("resultImage").src = msg.state.image_url + "?t=" + Date.now();
+      document.getElementById("resultImage").src = appResourceUrl(msg.state.image_url) + "?t=" + Date.now();
       document.getElementById("result").style.display = "block";
     }
     if (msg.state && msg.state.video_url) {
