@@ -50,8 +50,10 @@ def _text_generate(prompt: str) -> str:
     messages = [{"role": "user", "content": prompt}]
     inputs = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
                                             enable_thinking=False, return_tensors="pt").to(model.device)
+    # Greedy decoding is more reliable for the strict JSON contracts used by
+    # the planner and other graph nodes than sampled prose generation.
     output = model.generate(inputs, max_new_tokens=int(os.getenv("HF_MAX_NEW_TOKENS", "4096")),
-                            temperature=0.4, do_sample=True, top_p=0.9)
+                            do_sample=False)
     return tokenizer.decode(output[0][inputs.shape[-1]:], skip_special_tokens=True).strip()
 
 

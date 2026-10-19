@@ -11,6 +11,35 @@ def parse_costar(prompt):
             for i, m in enumerate(matches)}
 
 
+def _fallback_plan(prompt: str, explicit: dict, profile: dict) -> tuple[dict, dict]:
+    """Keep campaigns usable when a local model returns malformed JSON."""
+    lower = prompt.lower()
+    healthcare_terms = ("health", "medical", "cancer", "diabetes", "stroke", "sepsis", "patient", "disease")
+    occasion_terms = ("day", "festival", "diwali", "awareness month", "celebration")
+    campaign_type = "healthcare" if any(term in lower for term in healthcare_terms) else ("occasion" if any(term in lower for term in occasion_terms) else "business")
+    subject = prompt.strip().rstrip(".") or "the requested topic"
+    plan = {
+        "festival": subject if campaign_type == "occasion" else "",
+        "business": profile.get("name", ""),
+        "objective": "Create a clear, useful social-media campaign",
+        "tone": explicit.get("tone", "clear and empathetic"),
+        "platform": "social media",
+        "main_headline": subject[:64],
+        "main_message": subject,
+        "visual_goals": [f"Show the subject clearly: {subject}"],
+        "caption_goals": ["Explain the topic in accessible language"],
+        "delivery_requirements": ["Use the requested tone and brand style"],
+        "brand_name": profile.get("name", ""),
+        "source_context": prompt,
+        "campaign_type": campaign_type,
+        "occasion_only": campaign_type == "occasion",
+    }
+    costar = {"context": prompt, "objective": plan["objective"], "style": explicit.get("style", ""),
+              "tone": plan["tone"], "audience": explicit.get("audience", "general audience"),
+              "response": explicit.get("response", "understand and engage")}
+    return plan, costar
+
+
 def planner_node(state: CampaignState) -> CampaignState:
     prompt = state.get("user_prompt", "")
     explicit = parse_costar(prompt)
@@ -60,7 +89,10 @@ from prevention; never promise cures, safety or survival. Avoid blame.
                         for g in group) for group in groups)):
             break
     else:
-        raise ValueError("Could not extract the full campaign goals. Please retry.")
+        plan, costar = _fallback_plan(prompt, explicit, state.get("business_profile", {}))
+        plan["communication_goals"] = plan["visual_goals"] + plan["caption_goals"]
+        plan["cta"], plan["offer"] = "", None
+        return {"campaign_plan": plan, "costar_brief": costar}
     costar = result.get("costar", {})
     costar = costar if isinstance(costar, dict) else {}
     costar.update(explicit)
